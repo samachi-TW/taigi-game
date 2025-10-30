@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台語羅馬拼音聽音練習</title>
+    <!-- 載入 Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 設定字體為 Inter 和中文字體 */
+        body {
+            font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f7f9fb;
+        }
+        /* 自定義按鈕動畫 */
+        .option-button {
+            transition: all 0.1s ease-in-out;
+            transform: translateY(0);
+        }
+        .option-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        /* Audio Button Style */
+        .audio-button {
+            transition: background-color 0.2s;
+        }
+        .audio-button:active {
+            transform: scale(0.98);
+        }
+        /* 聲波動畫 */
+        @keyframes ping-once {
+            0% { box-shadow: 0 0 0 0px rgba(79, 70, 229, 0.7); }
+            50% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+            100% { box-shadow: 0 0 0 0px rgba(79, 70, 229, 0); }
+        }
+        .animate-ping-once {
+            animation: ping-once 1s cubic-bezier(0, 0, 0.2, 1);
+        }
+        /* Gemini 回應的樣式 */
+        #gemini-response p, #gemini-feedback-response p {
+            margin-bottom: 0.5rem;
+        }
+        #gemini-response ul, #gemini-feedback-response ul {
+            list-style-type: disc;
+            margin-left: 1.5rem;
+        }
+        #gemini-response li, #gemini-feedback-response li {
+            margin-bottom: 0.25rem;
+        }
+    </style>
+    <!-- 載入 Font Awesome icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Gemini API 金鑰輸入 -->
+    <div class="w-full max-w-md bg-white shadow-lg rounded-lg p-4 mb-4 border-t-4 border-indigo-400">
+        <label for="api-key-input" class="block text-sm font-medium text-gray-700 mb-1">
+            Gemini API 金鑰 (API Key)
+        </label>
+        <div class="flex space-x-2">
+            <input type="password" id="api-key-input" class="flex-1 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="請輸入您的 Gemini API 金鑰">
+            <button id="save-key-button" class="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 active:bg-indigo-800">
+                儲存
+            </button>
+        </div>
+        <p id="api-key-status" class="text-xs text-green-600 mt-1 hidden">金鑰已儲存！</p>
+    </div>
+
+    <!-- 遊戲容器 -->
+    <div id="game-container" class="w-full max-w-md bg-white shadow-2xl rounded-xl p-6 md:p-10 border-t-8 border-indigo-500" style="display: none;"> <!-- 初始隱藏，由 JS 啟動 -->
+        
+        <!-- 標題與分數 -->
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-extrabold text-gray-800">
+                台語羅馬拼音練習
+            </h1>
+            <p class="text-indigo-600 font-medium text-lg">
+                (p, ph) + (a, i, u, e, oo, o)
+            </p>
+            <div class="mt-4 flex justify-between items-center bg-gray-50 p-3 rounded-lg shadow-inner">
+                <div class="text-left">
+                    <span class="text-sm font-semibold text-gray-600">目前得分:</span>
+                    <span id="score-display" class="text-2xl font-bold text-green-600 block">0</span>
+                </div>
+                <div class="text-right">
+                    <span class="text-sm font-semibold text-gray-600">目前題數:</span>
+                    <span id="question-counter-display" class="text-2xl font-bold text-indigo-600 block">0 / 10</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 遊戲區塊 -->
+        <main id="game-area">
+            <!-- 問題顯示 (加入音訊按鈕) -->
+            <div class="mb-6 p-5 bg-indigo-50 rounded-lg text-center shadow-lg">
+                <p id="word-context-display" class="text-xl text-indigo-800 font-semibold mb-3">
+                    <!-- 顯示要判斷的詞彙，例如：請聽取「阿婆」中的音節 -->
+                    請聽取「<span id="current-word-char" class="text-3xl font-extrabold text-red-600"></span>」的發音：
+                </p>
+                
+                <button id="audio-button" class="audio-button inline-flex items-center justify-center space-x-3 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 text-xl font-bold px-6 py-4 rounded-full border-4 border-indigo-400 shadow-xl transition duration-150 ease-in-out">
+                    <!-- 喇叭圖示 -->
+                    <i class="fas fa-volume-up text-2xl" id="speaker-icon"></i>
+                    <span class="text-xl">點擊播放音檔</span> 
+                </button>
+            </div>
+
+            <!-- 選項按鈕 -->
+            <div id="options-container" class="grid grid-cols-2 gap-4">
+                <!-- 選項會由 JavaScript 動態生成 -->
+            </div>
+
+            <!-- 訊息顯示區 -->
+            <div id="message-box" class="mt-6 text-center h-16">
+                <!-- 遊戲訊息會顯示在這裡 -->
+            </div>
+
+            <!-- ✨ Gemini API 例句區 -->
+            <div id="gemini-output-container" class="mt-4 p-4 bg-gray-50 rounded-lg hidden shadow-inner">
+                <button id="gemini-example-button" class="w-full py-2 px-4 bg-yellow-500 text-yellow-900 font-bold rounded-lg shadow-md hover:bg-yellow-400 active:bg-yellow-600 transition duration-150 ease-in-out">
+                    ✨ 學習例句 (gîm-lē-kù)
+                </button>
+                <div id="gemini-loading" class="text-center text-indigo-600 py-4 hidden">
+                    <i class="fas fa-spinner fa-spin mr-2"></i> 正在呼叫 AI 老師...
+                </div>
+                <div id="gemini-response" class="mt-4 text-gray-700 text-left"></div>
+            </div>
+            
+            <!-- 控制按鈕 -->
+            <div class="mt-4 text-center">
+                <button 
+                    id="next-button" 
+                    class="w-full py-3 px-6 bg-green-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-4 focus:ring-green-300 transition duration-150 ease-in-out hidden"
+                    onclick="nextQuestion()">
+                    下一題
+                </button>
+            </div>
+        </main>
+
+        <!-- 遊戲結束畫面 -->
+        <div id="final-score-container" class="text-center hidden">
+            <h2 class="text-2xl font-bold text-indigo-700 mb-4">測驗完成！</h2>
+            <p class="text-xl text-gray-700 mb-2">您的總得分是：</p>
+            <p id="final-score-display" class="text-6xl font-extrabold text-green-600 mb-8">0</p>
+            <button 
+                id="restart-button" 
+                class="w-full py-3 px-6 bg-indigo-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-300 transition duration-150 ease-in-out"
+                onclick="startGame()">
+                重新開始
+            </button>
+            
+            <!-- ✨ Gemini API 總評區 -->
+            <button id="gemini-feedback-button" class="w-full mt-4 py-3 px-6 bg-yellow-500 text-yellow-900 font-bold text-lg rounded-lg shadow-md hover:bg-yellow-400 active:bg-yellow-600 transition duration-150 ease-in-out">
+                ✨ 取得 AI 老師評語
+            </button>
+            <div id="gemini-feedback-container" class="mt-4 p-4 bg-gray-50 rounded-lg hidden shadow-inner">
+                <div id="gemini-feedback-loading" class="text-center text-indigo-600 py-4 hidden">
+                    <i class="fas fa-spinner fa-spin mr-2"></i> 正在呼叫 AI 老師...
+                </div>
+                <div id="gemini-feedback-response" class="mt-2 text-gray-700 text-left"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 
+      *** 合併後的 JavaScript ***
+      將 Firebase 模組載入和遊戲邏輯放在同一個 type="module" SCRIPT 中
+    -->
+    <script type="module">
+        // *** 1. 載入 Firebase 模組 ***
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // *** 2. 遊戲邏輯 ***
+        
+        // 題庫 (使用 "孵卵" phu-nn̄g 替換錯誤的 "下晡" pu)
+        // 新增 fullPinyin 以便 AI 查詢
+        const WORDS = [
+            { syllable: 'pa', context: '籬笆的笆', char: '笆', id: 13378, fullPinyin: 'lî-pa' },
+            { syllable: 'pi', context: '咖啡的啡', char: '啡', id: 3728, fullPinyin: 'ka-pi' },
+            { syllable: 'pe', context: '老爸的爸', char: '爸', id: 2678, fullPinyin: 'lāu-pē' },
+            { syllable: 'poo', context: '補習的補', char: '補', id: 10026, fullPinyin: 'póo-si̍p' },
+            { syllable: 'po', context: '玻璃的玻', char: '玻', id: 5284, fullPinyin: 'po-lê' },
+            { syllable: 'poo', context: '墓仔埔的埔', char: '埔', id: 10418, fullPinyin: 'bōng-á-poo' },
+            { syllable: 'pha', context: '膨疱的疱', char: '疱', id: 11867, fullPinyin: 'phòng-phā' },
+            { syllable: 'phi', context: '披衫的披', char: '披', id: 4059, fullPinyin: 'phi-sann' },
+            { syllable: 'phu', context: '孵卵的孵', char: '孵', id: 10459, fullPinyin: 'phu-nn̄g' },
+            { syllable: 'phu', context: '葡萄的葡', char: '葡', id: 9985, fullPinyin: 'phû-tô' },
+            { syllable: 'phe', context: '尿帕仔的帕', char: '帕', id: 3087, fullPinyin: 'jiō-phè-á' },
+            { syllable: 'phoo', context: '普渡的普', char: '普', id: 8459, fullPinyin: 'phóo-tōo' },
+            { syllable: 'pho', context: '山坡的坡', char: '坡', id: 25997, fullPinyin: 'suann-pho' },
+        ];
+
+        // 韻母表
+        const VOWELS = ['a', 'i', 'u', 'e', 'oo', 'o'];
+
+        // DOM 元素
+        const gameContainer = document.getElementById('game-container');
+        const gameArea = document.getElementById('game-area');
+        const audioButton = document.getElementById('audio-button');
+        const wordContextDisplay = document.getElementById('word-context-display');
+        const optionsContainer = document.getElementById('options-container');
+        const scoreDisplay = document.getElementById('score-display');
+        const questionCounterDisplay = document.getElementById('question-counter-display');
+        const nextButton = document.getElementById('next-button');
+        const messageBox = document.getElementById('message-box');
+        const speakerIcon = document.getElementById('speaker-icon');
+        const finalScoreContainer = document.getElementById('final-score-container');
+        const finalScoreDisplay = document.getElementById('final-score-display');
+        
+        // Gemini DOM 元素
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveKeyButton = document.getElementById('save-key-button');
+        const apiKeyStatus = document.getElementById('api-key-status');
+        const geminiOutputContainer = document.getElementById('gemini-output-container');
+        const geminiExampleButton = document.getElementById('gemini-example-button');
+        const geminiLoading = document.getElementById('gemini-loading');
+        const geminiResponse = document.getElementById('gemini-response');
+        const geminiFeedbackButton = document.getElementById('gemini-feedback-button');
+        const geminiFeedbackContainer = document.getElementById('gemini-feedback-container');
+        const geminiFeedbackLoading = document.getElementById('gemini-feedback-loading');
+        const geminiFeedbackResponse = document.getElementById('gemini-feedback-response');
+
+        // 遊戲狀態
+        let score = 0;
+        let currentQuestionIndex = 0;
+        const TOTAL_GAME_QUESTIONS = 10;
+        let gameSessionWords = []; // 儲存本局的 10 個問題
+        let wrongAnswers = []; // 儲存答錯的音節
+        
+        let currentWord = null;
+        let currentCorrectAnswer = '';
+        let questionActive = false;
+        let audio = null; 
+        let geminiApiKey = '';
+
+        // Firebase 全域變數定義
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        let db; // Firestore instance
+
+        /**
+         * 隨機打亂陣列 (Fisher-Yates Shuffle)
+         */
+        function shuffleArray(arr) {
+            let newArr = [...arr]; // 創建副本以免修改原陣列
+            for (let i = newArr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+            }
+            return newArr;
+        }
+
+        /**
+         * 播放音檔
+         */
+        function playAudio() {
+            if (!currentWord) return;
+            
+            if (audio) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+
+            const wordId = currentWord.id; 
+            const idString = String(wordId);
+            
+            let idPrefix = '';
+            if (idString.length >= 5) {
+                idPrefix = idString.substring(0, 2); 
+            } else if (idString.length === 1) { 
+                idPrefix = '0';
+            } else {
+                idPrefix = idString.charAt(0);
+            }
+            
+            const audioUrl = `https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/${idPrefix}/${wordId}.mp3`;
+            
+            audio = new Audio(audioUrl);
+
+            speakerIcon.classList.remove('animate-ping-once');
+            setTimeout(() => speakerIcon.classList.add('animate-ping-once'), 10); 
+            
+            audio.play().catch(error => {
+                console.error("Audio playback failed with URL (Checked ID Path):", audioUrl, error); 
+                messageBox.innerHTML = '<span class="text-lg font-bold text-red-600">⚠️ 播放失敗，請檢查網路連線！</span>';
+                speakerIcon.classList.remove('animate-ping-once');
+            });
+
+            audio.onended = () => {
+                speakerIcon.classList.remove('animate-ping-once');
+            };
+        }
+
+        /**
+         * 生成干擾選項 (p/ph + 6 韻母)
+         */
+        function generateDistractors(correctSyllable) {
+            let correctConsonant = '';
+            if (correctSyllable.startsWith('ph')) {
+                correctConsonant = 'ph';
+            } else {
+                correctConsonant = 'p';
+            }
+            const allOptions = VOWELS.map(vowel => correctConsonant + vowel);
+            return shuffleArray(allOptions);
+        }
+
+        /**
+         * 生成一個新的問題
+         */
+        window.generateQuestion = function() {
+            currentWord = gameSessionWords[currentQuestionIndex];
+            currentCorrectAnswer = currentWord.syllable; 
+
+            const context = currentWord.context;
+            const char = currentWord.char;
+            const highlightedContext = context.replace(char, `<span class="text-3xl font-extrabold text-red-600">${char}</span>`);
+            wordContextDisplay.innerHTML = `請聽取「${highlightedContext}」的發音：`;
+            
+            questionCounterDisplay.textContent = `${currentQuestionIndex + 1} / ${TOTAL_GAME_QUESTIONS}`;
+            audioButton.onclick = playAudio;
+
+            const options = generateDistractors(currentCorrectAnswer);
+
+            optionsContainer.innerHTML = '';
+            options.forEach(option => {
+                const button = document.createElement('button');
+                button.textContent = option;
+                button.setAttribute('data-answer', option);
+                button.className = 'option-button py-4 px-2 bg-gray-100 text-gray-800 font-bold text-2xl rounded-lg shadow-md border-2 border-gray-200 hover:bg-indigo-100';
+                button.onclick = () => checkAnswer(button, option);
+                optionsContainer.appendChild(button);
+            });
+
+            messageBox.innerHTML = '';
+            nextButton.classList.add('hidden');
+            geminiOutputContainer.classList.add('hidden'); // 隱藏 Gemini 區塊
+            geminiExampleButton.classList.add('hidden');
+            geminiResponse.innerHTML = '';
+            questionActive = true;
+        }
+
+        /**
+         * 檢查玩家選擇的答案
+         */
+        window.checkAnswer = function(selectedButton, selectedAnswer) {
+            if (!questionActive) return;
+
+            questionActive = false; 
+            const allButtons = optionsContainer.querySelectorAll('button');
+            allButtons.forEach(btn => btn.classList.remove('hover:bg-indigo-100'));
+            
+            if (selectedAnswer === currentCorrectAnswer) {
+                score += 10;
+                scoreDisplay.textContent = score;
+                
+                selectedButton.classList.remove('bg-gray-100');
+                selectedButton.classList.add('bg-green-500', 'text-white', 'border-green-600');
+                messageBox.innerHTML = `<span class="text-lg font-bold text-green-600">✅ 答對了！</span>`;
+                
+                // ✨ 顯示 Gemini 例句按鈕
+                geminiOutputContainer.classList.remove('hidden');
+                geminiExampleButton.classList.remove('hidden');
+                geminiResponse.innerHTML = '';
+                geminiLoading.classList.add('hidden');
+                
+            } else {
+                selectedButton.classList.remove('bg-gray-100');
+                selectedButton.classList.add('bg-red-500', 'text-white', 'border-red-600');
+                
+                allButtons.forEach(btn => {
+                    if (btn.getAttribute('data-answer') === currentCorrectAnswer) {
+                        btn.classList.add('bg-green-100', 'text-green-700', 'border-green-400');
+                    }
+                });
+                
+                messageBox.innerHTML = `<span class="text-lg font-bold text-red-600">❌ 答錯了。正確的是: ${currentCorrectAnswer}</span>`;
+                
+                // ✨ 記錄錯誤
+                wrongAnswers.push(currentCorrectAnswer);
+            }
+
+            allButtons.forEach(btn => btn.disabled = true);
+            
+            if (currentQuestionIndex < TOTAL_GAME_QUESTIONS - 1) {
+                nextButton.classList.remove('hidden');
+            } else {
+                setTimeout(showFinalScore, 1000); 
+            }
+        }
+
+        /**
+         * 準備下一題
+         */
+        window.nextQuestion = function() {
+            currentQuestionIndex++;
+            generateQuestion();
+        }
+        
+        /**
+         * 顯示最終分數
+         */
+        window.showFinalScore = function() {
+            gameArea.classList.add('hidden');
+            finalScoreContainer.classList.remove('hidden');
+            finalScoreDisplay.textContent = score;
+            // 重設 Gemini 總評區
+            geminiFeedbackContainer.classList.add('hidden');
+            geminiFeedbackResponse.innerHTML = '';
+            // 重設按鈕
+            geminiFeedbackButton.classList.remove('hidden');
+        }
+        
+        /**
+         * 開始新遊戲 (或重新開始)
+         */
+        window.startGame = function() {
+            score = 0;
+            currentQuestionIndex = 0;
+            wrongAnswers = []; // 清空錯誤紀錄
+            scoreDisplay.textContent = score;
+            
+            gameSessionWords = shuffleArray(WORDS).slice(0, TOTAL_GAME_QUESTIONS);
+            
+            gameContainer.style.display = 'block';
+            gameArea.classList.remove('hidden');
+            finalScoreContainer.classList.add('hidden');
+            
+            generateQuestion();
+        }
+
+        // *** 3. ✨ Gemini API 相關功能 ***
+
+        /**
+         * 呼叫 Gemini API
+         * @param {string} prompt - 傳送給 LLM 的提示
+         * @param {HTMLElement} responseElement - 顯示回應的 HTML 元素
+         * @param {HTMLElement} loadingElement - 顯示載入中的 HTML 元素
+         */
+        async function callGemini(prompt, responseElement, loadingElement) {
+            if (!geminiApiKey) {
+                alert("請先在最上方輸入並儲存您的 Gemini API 金鑰！");
+                return;
+            }
+
+            loadingElement.classList.remove('hidden');
+            responseElement.innerHTML = '';
+
+            const systemPrompt = "你是一位友善、專業且鼓勵人心的台語老師（Sió-tsió-lāu-su）。你的教學對象是剛接觸台羅拼音的小學三年級學生。請用淺顯易懂、活潑親切的口吻回應。回應語言為繁體中文，但台語範例請務必同時包含【台語漢字】和【台羅拼音】。";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiApiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        systemInstruction: {
+                            parts: [{ text: systemPrompt }]
+                        },
+                    })
+                });
+
+                // *** 錯誤處理修正 ***
+                if (!response.ok) {
+                    let errorBody = null;
+                    let errorMessage = `API 錯誤: ${response.status}`;
+                    try {
+                        // 嘗試讀取 API 返回的 JSON 錯誤詳情
+                        errorBody = await response.json();
+                        if (errorBody && errorBody.error && errorBody.error.message) {
+                            errorMessage = `API 錯誤: ${errorBody.error.message}`;
+                        } else {
+                            errorMessage = `API 錯誤: ${response.status} ${response.statusText || 'Unknown error'}`;
+                        }
+                    } catch (e) {
+                        // 如果 API 錯誤回應不是 JSON，則使用 statusText
+                        errorMessage = `API 錯誤: ${response.status} ${response.statusText || 'Unknown error'}`;
+                    }
+                    throw new Error(errorMessage); // 拋出更詳細的錯誤
+                }
+                // *** 修正結束 ***
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    // 將換行符號 \n 轉換為 <br> 以便在 HTML 中顯示
+                    responseElement.innerHTML = text.replace(/\n/g, '<br>');
+                } else {
+                    responseElement.textContent = "抱歉，AI 老師沒有回應，請稍後再試。";
+                }
+
+            } catch (error) {
+                console.error("Gemini API call failed:", error);
+                
+                // *** 修正：提供更明確的 API Key 錯誤訊息 ***
+                let userErrorMessage = `呼叫失敗：${error.message}`;
+                if (error.message && error.message.toLowerCase().includes("api key not valid")) {
+                    userErrorMessage = "❌ API 金鑰無效！請在最上方重新輸入一個「有效」的 Gemini API 金鑰並儲存後，再試一次。";
+                } else {
+                    userErrorMessage = `呼叫失敗：${error.message} (請檢查您的網路連線或 API 配額)`;
+                }
+                responseElement.textContent = userErrorMessage;
+                // *** 修正結束 ***
+
+            } finally {
+                loadingElement.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 獲取 AI 老師的例句
+         */
+        window.getExampleSentence = function() {
+            if (!currentWord) return;
+
+            geminiExampleButton.classList.add('hidden'); // 點擊後隱藏
+            
+            const prompt = `學生剛剛答對了 ${currentWord.syllable} (來自「${currentWord.context}」，完整拼音 ${currentWord.fullPinyin})。\n請為「${currentWord.context}」(${currentWord.fullPinyin}) 這個詞彙，創作一個適合小學生的簡短生活例句。\n請包含【台語漢字】、【台羅拼音】和【中文翻譯】三個欄位。`;
+            
+            callGemini(prompt, geminiResponse, geminiLoading);
+        }
+
+        /**
+         * 獲取 AI 老師的總結評語
+         */
+        window.getAIFeedback = function() {
+            geminiFeedbackButton.classList.add('hidden'); // 點擊後隱藏
+            geminiFeedbackContainer.classList.remove('hidden');
+            
+            let wrongSyllables = "無";
+            if (wrongAnswers.length > 0) {
+                // 去除重複
+                wrongSyllables = [...new Set(wrongAnswers)].join('、');
+            }
+
+            const prompt = `學生剛剛完成了 10 題的台語 (p/ph) 音節測驗。\n他的總分是 ${score} / 100 分。\n他答錯的音節有：[${wrongSyllables}]。\n請用小學老師的口吻，給學生一段鼓勵的評語和學習建議。`;
+
+            callGemini(prompt, geminiFeedbackResponse, geminiFeedbackLoading);
+        }
+
+
+        // *** 4. 頁面載入後執行 ***
+        window.onload = function() {
+            // 載入儲存的 API Key
+            geminiApiKey = localStorage.getItem('geminiApiKey') || '';
+            apiKeyInput.value = geminiApiKey;
+            if (geminiApiKey) {
+                apiKeyStatus.classList.remove('hidden');
+            }
+
+            // 儲存 API Key 事件
+            saveKeyButton.onclick = () => {
+                geminiApiKey = apiKeyInput.value;
+                localStorage.setItem('geminiApiKey', geminiApiKey);
+                apiKeyStatus.classList.remove('hidden');
+                setTimeout(() => apiKeyStatus.classList.add('hidden'), 2000);
+            };
+
+            // 綁定 Gemini 按鈕事件
+            geminiExampleButton.onclick = getExampleSentence;
+            geminiFeedbackButton.onclick = getAIFeedback;
+            
+            // 監聽 Firebase 認證狀態
+            if (firebaseConfig) {
+                try {
+                    setLogLevel('Debug'); 
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app); 
+                    const auth = getAuth(app);
+                    
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            console.log("Firebase user signed in:", user.uid);
+                        } else {
+                            console.log("Firebase user signed out.");
+                        }
+                    });
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                         console.log("Attempting custom token sign-in...");
+                         signInWithCustomToken(auth, __initial_auth_token).catch((error) => {
+                            console.error("Custom token sign-in failed, falling back to anonymous:", error);
+                            signInAnonymously(auth).catch(e => console.error("Anonymous sign-in fallback failed:", e));
+                        });
+                    } else {
+                         console.log("No custom token, signing in anonymously.");
+                         signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
+                    }
+
+                } catch (e) {
+                    console.error("Firebase initialization failed:", e);
+                }
+            } else {
+                console.warn("Firebase config is not available. Skipping auth.");
+            }
+            
+            // 無論 Firebase 是否成功，都啟動遊戲
+            startGame();
+        }
+
+    </script>
+</body>
+</html>
+
+
